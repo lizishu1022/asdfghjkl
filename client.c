@@ -24,6 +24,9 @@ int main(int argc, char *argv[]) {
     char buffer[256];
     int sequenceNumber = 0;
 
+    int type_message = 1000000;
+    int seq_num = 1;
+
     if (argc < 3) {
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
        exit(0);
@@ -78,6 +81,12 @@ int main(int argc, char *argv[]) {
 //            sprintf(seqString, "%d", sequenceNumber); //添加sequence number
 //            strcat(seqString,":"); //为sequence number添加标识符
 //            strcat(buffer, seqString); //为buffer添加 sequence number 和 标识符
+
+            char seq_str[256];
+            sprintf(seq_str, "%d", (type_message + seq_num));
+            strcat(seq_str, buffer);
+            strcpy(buffer, seq_str);
+            seq_num++;
 
             n = write(sockfd,buffer,strlen(buffer));
             if (n < 0) {
