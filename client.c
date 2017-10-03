@@ -7,10 +7,56 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <poll.h>
+#include <errno.h>
 
 void error(const char *msg) {
     perror(msg);
     exit(0);
+}
+
+ssize_t readLine(int fd, void *buffer, size_t n)
+{
+    ssize_t numRead;                    /* # of bytes fetched by last read() */
+    size_t totRead;                     /* Total bytes read so far */
+    char *buf;
+    char ch;
+
+    if (n <= 0 || buffer == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    buf = buffer;                       /* No pointer arithmetic on "void *" */
+
+    totRead = 0;
+    for (;;) {
+        numRead = read(fd, &ch, 1);
+
+        if (numRead == -1) {
+            if (errno == EINTR)         /* Interrupted --> restart read() */
+                continue;
+            else
+                return -1;              /* Some other error */
+
+        } else if (numRead == 0) {      /* EOF */
+            if (totRead == 0)           /* No bytes read; return 0 */
+                return 0;
+            else                        /* Some bytes read; add '\0' */
+                break;
+
+        } else {                        /* 'numRead' must be 1 if we get here */
+            if (totRead < n - 1) {      /* Discard > (n - 1) bytes */
+                totRead++;
+                *buf++ = ch;
+            }
+
+            if (ch == '\n')
+                break;
+        }
+    }
+
+    *buf = '\0';
+    return totRead;
 }
 
 int main(int argc, char *argv[]) {
@@ -24,7 +70,11 @@ int main(int argc, char *argv[]) {
     char buffer[256];
     int sequenceNumber = 0;
 
-    int type_message = 1000000;
+    int type_message  = 1000000;
+    int type_ack      = 2000000;
+    int type_nck      = 3000000;
+    int type_eof      = 9000000;
+
     int seq_num = 1;
 
     if (argc < 3) {
@@ -98,7 +148,7 @@ int main(int argc, char *argv[]) {
         if (fds[1].revents && POLLIN) {
 
             bzero(buffer,256);
-            n = read(sockfd,buffer,255);
+            n = readLine(sockfd, buffer, 255);
 
 
             //提取这个buffer中的sequence number，在标识符":"之前的string，就是sequence number.
@@ -114,8 +164,9 @@ int main(int argc, char *argv[]) {
             if (n == 0) {
               break;
             }
-
-            printf("%s", buffer);
+            char msg[256];
+            strcpy(msg, buffer + 7);
+            printf("%s", msg);
         }
     }
 
