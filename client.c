@@ -119,28 +119,26 @@ int main(int argc, char *argv[]) {
         if (fds[0].revents && POLLIN) {
 
             bzero(buffer,256);
-            fgets(buffer,255,stdin);
-            if(feof(stdin)){
-              break;
-            }
+            if(fgets(buffer,255,stdin) != NULL){
+                char seq_str[256];
+                sprintf(seq_str, "%d", (type_message + seq_num));
+                strcat(seq_str, buffer);
+                strcpy(buffer, seq_str);
+                seq_num++;
 
-//            ++sequenceNumber;
-//            char seqString[6];
+                n = write(sockfd,buffer,strlen(buffer));
+                if (n < 0) {
+                    error("ERROR writing to socket");
+                }
+            }else{
+                char seq_str[256];
+                sprintf(seq_str, "%d\n", (type_eof + seq_num));
+                seq_num++;
 
-
-//            sprintf(seqString, "%d", sequenceNumber); //添加sequence number
-//            strcat(seqString,":"); //为sequence number添加标识符
-//            strcat(buffer, seqString); //为buffer添加 sequence number 和 标识符
-
-            char seq_str[256];
-            sprintf(seq_str, "%d", (type_message + seq_num));
-            strcat(seq_str, buffer);
-            strcpy(buffer, seq_str);
-            seq_num++;
-
-            n = write(sockfd,buffer,strlen(buffer));
-            if (n < 0) {
-                error("ERROR writing to socket");
+                n = write(sockfd,seq_str,strlen(seq_str));
+                if (n < 0) {
+                    error("ERROR writing to socket");
+                }
             }
 
         }
@@ -161,12 +159,14 @@ int main(int argc, char *argv[]) {
             if (n < 0) {
                 error("ERROR reading from socket");
             }
-            if (n == 0) {
+            char data_type = buffer[0];
+            if(data_type == '1'){
+              char msg[256];
+              strcpy(msg, buffer + 7);
+              printf("%s", msg);
+            }else if(data_type == '9'){
               break;
             }
-            char msg[256];
-            strcpy(msg, buffer + 7);
-            printf("%s", msg);
         }
     }
 
