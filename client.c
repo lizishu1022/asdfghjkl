@@ -40,7 +40,10 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
         struct package_recv *p = queue->tail;
         while(p != NULL){
             //printf("comparing item.sq: %d, p.sq %d\n",item->sq , p->sq );
-            if(item->sq > p->sq){
+            if(item->sq == p->sq){
+                return;
+            }
+            else if(item->sq > p->sq){
                 if(p == queue->tail){
                     item->prev = p;
                     queue->tail->next = item;
@@ -214,7 +217,7 @@ int main(int argc, char *argv[]) {
                         error("ERROR writing to socket");
                     }
                     flag_all_sent = 1;
-                    break;
+                    continue;
                 }
             }
 
