@@ -261,8 +261,7 @@ int main(int argc, char *argv[]) {
             //print(&recv_queue);
             //printf("%c\n", recv_queue.tail->type);
             //printf("%d\n", recv_queue.size);
-            //printf("%lu\n", recv_queue.sum_sq);
-            if(recv_queue.tail->type == '9' && recv_queue.sum_sq == recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
+            if(recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
                 print(&recv_queue);
                 break;
             }
