@@ -8,11 +8,20 @@
 #include <netdb.h>
 #include <poll.h>
 #include <errno.h>
+#include <sys/time.h>
 
 void error(const char *msg) {
     perror(msg);
     exit(0);
 }
+
+long long now64(){
+  struct timeval now;
+  bzero(&now, sizeof(struct timeval));
+  if (gettimeofday(&now,0)) error("ERROR: gettimeofday() failed\n");
+  return  (long long)(now.tv_sec)*1000000 + now.tv_usec;
+}
+
 
 struct package_recv{
   char type;
@@ -28,6 +37,39 @@ struct package_recv_queue{
   int size;
   unsigned long sum_sq;
 };
+
+struct package_sent{
+    int type;
+    int sq;
+    char msg[256];
+    long long timestamp;
+    int received;
+};
+
+struct package_sent_queue{
+    struct package_sent *arr[90000];
+    int size;
+};
+
+void send_message(struct package_sent *item, int sockfd){
+    char seq_str[256];
+    char buffer[256];
+    strcpy(buffer, item->msg);
+    sprintf(seq_str, "%d", (item->type + item->sq));
+    strcat(seq_str, buffer);
+    strcpy(buffer, seq_str);
+
+    int n = write(sockfd,buffer,strlen(buffer));
+    if (n < 0) {
+        error("ERROR writing to socket");
+    }
+    item->timestamp = now64();
+}
+
+void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){
+    queue->arr[item->sq - 1] = item;
+    queue->size ++;
+}
 
 void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
     if(queue->size == 0){
@@ -75,8 +117,12 @@ void print(struct package_recv_queue *queue) {
     struct package_recv *p;
     p = queue->head;
     while(p != NULL && p->type != '9'){
-    //while(p != NULL){
         printf("%s", p->msg);
+        p = p->next;
+    }
+    p = queue->head;
+    while(p != NULL){
+        free(p);
         p = p->next;
     }
 }
@@ -182,6 +228,7 @@ int main(int argc, char *argv[]) {
     fds[1].events = POLLIN;
 
     struct package_recv_queue recv_queue;
+    struct package_sent_queue sent_queue;
     recv_queue.size = 0;
     recv_queue.sum_sq = 0;
     recv_queue.head = NULL;
@@ -195,26 +242,26 @@ int main(int argc, char *argv[]) {
 
             bzero(buffer,256);
             if(fgets(buffer,255,stdin) != NULL){
-                char seq_str[256];
-                sprintf(seq_str, "%d", (type_message + seq_num));
-                strcat(seq_str, buffer);
-                strcpy(buffer, seq_str);
-                seq_num++;
+                struct package_sent *item = (struct package_sent *)malloc(sizeof(struct package_sent));
+                item->type = type_message;
+                item->sq = seq_num;
+                item->received = 0;
+                strcpy(item->msg, buffer);
 
-                n = write(sockfd,buffer,strlen(buffer));
-                if (n < 0) {
-                    error("ERROR writing to socket");
-                }
+                send_message(item, sockfd);
+                enqueue_sent(&sent_queue, item);
+                seq_num ++;
             }
             else{
-                char seq_str[256];
-                sprintf(seq_str, "%d\n", (type_eof + seq_num));
-                seq_num++;
+                struct package_sent *item = (struct package_sent *)malloc(sizeof(struct package_sent));
+                item->type = type_eof;
+                item->sq = seq_num;
+                item->received = 0;
+                strcpy(item->msg, "EOF\n");
 
-                n = write(sockfd,seq_str,strlen(seq_str));
-                if (n < 0) {
-                    error("ERROR writing to socket");
-                }
+                send_message(item, sockfd);
+                enqueue_sent(&sent_queue, item);
+                seq_num ++;
                 flag_all_sent = 1;
             }
 
@@ -269,5 +316,9 @@ int main(int argc, char *argv[]) {
     }
 
     close(sockfd);
+    for(int i = 0; i < sent_queue.size; i ++){
+        //printf("%s", sent_queue.arr[i]->msg );
+        free(sent_queue.arr[i]);
+    }
     return 0;
 }
