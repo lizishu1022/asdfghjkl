@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
 
         poll(fds, 2, 1000);
 
-        if (fds[0].revents && POLLIN) {
+        if (fds[0].revents && POLLIN && !flag_all_sent) {
 
             bzero(buffer,256);
             if(fgets(buffer,255,stdin) != NULL){
@@ -207,18 +207,15 @@ int main(int argc, char *argv[]) {
                 }
             }
             else{
-                if(!flag_all_sent){
-                    char seq_str[256];
-                    sprintf(seq_str, "%d\n", (type_eof + seq_num));
-                    seq_num++;
+                char seq_str[256];
+                sprintf(seq_str, "%d\n", (type_eof + seq_num));
+                seq_num++;
 
-                    n = write(sockfd,seq_str,strlen(seq_str));
-                    if (n < 0) {
-                        error("ERROR writing to socket");
-                    }
-                    flag_all_sent = 1;
-                    continue;
+                n = write(sockfd,seq_str,strlen(seq_str));
+                if (n < 0) {
+                    error("ERROR writing to socket");
                 }
+                flag_all_sent = 1;
             }
 
         }
@@ -238,6 +235,9 @@ int main(int argc, char *argv[]) {
 
             if (n < 0) {
                 error("ERROR reading from socket");
+            }
+            if (n == 0) {
+                break;
             }
             char data_type = buffer[0];
             char sq[8];
