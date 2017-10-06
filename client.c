@@ -26,7 +26,7 @@ struct package_recv_queue{
   struct package_recv *head;
   struct package_recv *tail;
   int size;
-  int sum_sq;
+  unsigned long sum_sq;
 };
 
 void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
@@ -35,17 +35,44 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
         queue->tail = item;
     }
     else{
-      queue->tail->next = item;
-      item->prev = queue->tail;
-      queue->tail = item;
+        if(queue->tail->type == '9' && item->type == '9')
+            return;
+        struct package_recv *p = queue->tail;
+        while(p != NULL){
+            //printf("comparing item.sq: %d, p.sq %d\n",item->sq , p->sq );
+            if(item->sq > p->sq){
+                if(p == queue->tail){
+                    item->prev = p;
+                    queue->tail->next = item;
+                    queue->tail = item;
+                }
+                else{
+                    item->prev = p;
+                    item->next = p->next;
+                    p->next->prev = item;
+                    p->next = item;
+                }
+                break;
+            }
+            p = p->prev;
+        }
+        if(p == NULL){
+            queue->head->prev = item;
+            item->next = queue->head;
+            queue->head = item;
+        }
     }
-    queue->size ++;
+    if(item->type == '1'){
+        queue->sum_sq += item->sq;
+        queue->size ++;
+      }
 }
 
 void print(struct package_recv_queue *queue) {
     struct package_recv *p;
     p = queue->head;
-    while(p != NULL){
+    while(p != NULL && p->type != '9'){
+    //while(p != NULL){
         printf("%s", p->msg);
         p = p->next;
     }
@@ -112,6 +139,8 @@ int main(int argc, char *argv[]) {
     int type_nck      = 3000000;
     int type_eof      = 9000000;
 
+    int flag_all_sent = 0;
+
     int seq_num = 1;
 
     if (argc < 3) {
@@ -173,14 +202,19 @@ int main(int argc, char *argv[]) {
                 if (n < 0) {
                     error("ERROR writing to socket");
                 }
-            }else{
-                char seq_str[256];
-                sprintf(seq_str, "%d\n", (type_eof + seq_num));
-                seq_num++;
+            }
+            else{
+                if(!flag_all_sent){
+                    char seq_str[256];
+                    sprintf(seq_str, "%d\n", (type_eof + seq_num));
+                    seq_num++;
 
-                n = write(sockfd,seq_str,strlen(seq_str));
-                if (n < 0) {
-                    error("ERROR writing to socket");
+                    n = write(sockfd,seq_str,strlen(seq_str));
+                    if (n < 0) {
+                        error("ERROR writing to socket");
+                    }
+                    flag_all_sent = 1;
+                    break;
                 }
             }
 
@@ -213,14 +247,21 @@ int main(int argc, char *argv[]) {
             p->prev = NULL;
             p->next = NULL;
 
+            //printf("%s", buffer);
+
             if(data_type == '1'){
-              char msg[256];
               strcpy(p->msg, buffer + 7);
-              //printf("%s", p.msg);
-              enqueue(&recv_queue, p);
             }else if(data_type == '9'){
-              print(&recv_queue);
-              break;
+              strcpy(p->msg, "EOF\n");
+            }
+            enqueue(&recv_queue, p);
+            //print(&recv_queue);
+            //printf("%c\n", recv_queue.tail->type);
+            //printf("%d\n", recv_queue.size);
+            //printf("%lu\n", recv_queue.sum_sq);
+            if(recv_queue.tail->type == '9' && recv_queue.sum_sq == recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
+                print(&recv_queue);
+                break;
             }
         }
     }
