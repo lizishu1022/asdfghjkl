@@ -122,8 +122,9 @@ void print(struct package_recv_queue *queue) {
     }
     p = queue->head;
     while(p != NULL){
-        free(p);
+        struct package_recv *tmp = p;
         p = p->next;
+        free(tmp);
     }
 }
 
