@@ -14,6 +14,43 @@ void error(const char *msg) {
     exit(0);
 }
 
+struct package_recv{
+  char type;
+  int sq;
+  char msg[256];
+  struct package_recv *prev;
+  struct package_recv *next;
+};
+
+struct package_recv_queue{
+  struct package_recv *head;
+  struct package_recv *tail;
+  int size;
+  int sum_sq;
+};
+
+void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
+    if(queue->size == 0){
+        queue->head = item;
+        queue->tail = item;
+    }
+    else{
+      queue->tail->next = item;
+      item->prev = queue->tail;
+      queue->tail = item;
+    }
+    queue->size ++;
+}
+
+void print(struct package_recv_queue *queue) {
+    struct package_recv *p;
+    p = queue->head;
+    while(p != NULL){
+        printf("%s", p->msg);
+        p = p->next;
+    }
+}
+
 ssize_t readLine(int fd, void *buffer, size_t n)
 {
     ssize_t numRead;                    /* # of bytes fetched by last read() */
@@ -112,6 +149,12 @@ int main(int argc, char *argv[]) {
     fds[0].events = POLLIN; //pollin because reading
     fds[1].events = POLLIN;
 
+    struct package_recv_queue recv_queue;
+    recv_queue.size = 0;
+    recv_queue.sum_sq = 0;
+    recv_queue.head = NULL;
+    recv_queue.tail = NULL;
+
     while(1) {
 
         poll(fds, 2, 1000);
@@ -160,11 +203,23 @@ int main(int argc, char *argv[]) {
                 error("ERROR reading from socket");
             }
             char data_type = buffer[0];
+            char sq[8];
+            memcpy(sq, buffer + 1, 7);
+            sq[7] = '\0';
+
+            struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));;
+            p->type = buffer[0];
+            p->sq = atoi(sq);
+            p->prev = NULL;
+            p->next = NULL;
+
             if(data_type == '1'){
               char msg[256];
-              strcpy(msg, buffer + 7);
-              printf("%s", msg);
+              strcpy(p->msg, buffer + 7);
+              //printf("%s", p.msg);
+              enqueue(&recv_queue, p);
             }else if(data_type == '9'){
+              print(&recv_queue);
               break;
             }
         }
