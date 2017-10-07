@@ -66,6 +66,14 @@ void send_message(struct package_sent *item, int sockfd){
     item->timestamp = now64();
 }
 
+void resend(struct package_sent_queue queue, int sockfd){
+    for(int i = 0; i < queue.size; i ++){
+        if(queue.arr[i]->received != 1){
+            send_message(queue.arr[i], sockfd);
+        }
+    }
+}
+
 void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){
     queue->arr[item->sq - 1] = item;
     queue->size ++;
@@ -239,6 +247,10 @@ int main(int argc, char *argv[]) {
 
         poll(fds, 2, 1000);
 
+        if(sent_queue.size != 0){
+            resend(sent_queue, sockfd);
+        }
+
         if (fds[0].revents && POLLIN && !flag_all_sent) {
 
             bzero(buffer,256);
@@ -292,24 +304,30 @@ int main(int argc, char *argv[]) {
             memcpy(sq, buffer + 1, 7);
             sq[7] = '\0';
 
-            struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));;
-            p->type = buffer[0];
-            p->sq = atoi(sq);
-            p->prev = NULL;
-            p->next = NULL;
+            if(data_type == '1' || data_type == '9'){
+                struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));;
+                p->type = buffer[0];
+                p->sq = atoi(sq);
+                p->prev = NULL;
+                p->next = NULL;
 
-            //printf("%s", buffer);
+                //printf("%s", buffer);
 
-            if(data_type == '1'){
-              strcpy(p->msg, buffer + 7);
-            }else if(data_type == '9'){
-              strcpy(p->msg, "EOF\n");
+                strcpy(p->msg, buffer + 7);
+
+                enqueue(&recv_queue, p);
+                char response[16];
+                sprintf(response, "%dACK\n", type_ack + p->sq);
+                write(sockfd, response, strlen(response));
+                //print(&recv_queue);
+                //printf("%c\n", recv_queue.tail->type);
+                //printf("%d\n", recv_queue.size);
             }
-            enqueue(&recv_queue, p);
-            //print(&recv_queue);
-            //printf("%c\n", recv_queue.tail->type);
-            //printf("%d\n", recv_queue.size);
-            if(recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
+            else if(data_type == '2'){
+                sent_queue.arr[atoi(sq) - 1]->received = 1;
+            }
+
+             if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
                 print(&recv_queue);
                 break;
             }
@@ -318,7 +336,7 @@ int main(int argc, char *argv[]) {
 
     close(sockfd);
     for(int i = 0; i < sent_queue.size; i ++){
-        //printf("%s", sent_queue.arr[i]->msg );
+        printf("%d\t%lld\t%s", sent_queue.arr[i]->received, sent_queue.arr[i]->timestamp, sent_queue.arr[i]->msg );
         free(sent_queue.arr[i]);
     }
     return 0;
