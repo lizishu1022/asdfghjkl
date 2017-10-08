@@ -300,9 +300,9 @@ int main(int argc, char *argv[]) {
                 break;
             }
             char data_type = buffer[0];
-            char sq[8];
-            memcpy(sq, buffer + 1, 7);
-            sq[7] = '\0';
+            char sq[7];
+            memcpy(sq, buffer + 1, 6);
+            sq[6] = '\0';
 
             if(data_type == '1' || data_type == '9'){
                 struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));;
