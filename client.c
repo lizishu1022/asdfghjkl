@@ -247,13 +247,11 @@ int main(int argc, char *argv[]) {
 
     while(1) {
 
-        int r = poll(fds, 2, 1000);
+        int r = poll(fds, 2, 2000);
 
-        if(r == 0){
+        if(r == 0 && recv_queue.size != 0){
             struct package_sent item;
             item.type = type_timeout;
-            item.sq = seq_num;
-            item.received = 0;
             strcpy(item.msg, "TIMEOUT\n");
 
             send_message(&item, sockfd);
