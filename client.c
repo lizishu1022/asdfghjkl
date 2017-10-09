@@ -63,7 +63,6 @@ void send_message(struct package_sent *item, int sockfd){
     if (n < 0) {
         error("ERROR writing to socket");
     }
-    item->timestamp = now64();
 }
 
 void resend(struct package_sent_queue queue, int sockfd){
@@ -195,6 +194,7 @@ int main(int argc, char *argv[]) {
     int type_message  = 1000000;
     int type_ack      = 2000000;
     int type_nck      = 3000000;
+    int type_timeout  = 4000000;
     int type_eof      = 9000000;
 
     int flag_all_sent = 0;
@@ -237,21 +237,30 @@ int main(int argc, char *argv[]) {
     fds[1].events = POLLIN;
 
     struct package_recv_queue recv_queue;
-    struct package_sent_queue sent_queue;
     recv_queue.size = 0;
     recv_queue.sum_sq = 0;
     recv_queue.head = NULL;
     recv_queue.tail = NULL;
 
+    struct package_sent_queue sent_queue;
+    sent_queue.size = 0;
+
     while(1) {
 
-        poll(fds, 2, 1000);
+        int r = poll(fds, 2, 1000);
 
-        if(sent_queue.size != 0){
-            resend(sent_queue, sockfd);
+        if(r == 0){
+            struct package_sent item;
+            item.type = type_timeout;
+            item.sq = seq_num;
+            item.received = 0;
+            strcpy(item.msg, "TIMEOUT\n");
+
+            send_message(&item, sockfd);
         }
 
-        if (fds[0].revents && POLLIN && !flag_all_sent) {
+
+        if ((fds[0].revents & POLLIN) && !flag_all_sent) {
 
             bzero(buffer,256);
             if(fgets(buffer,255,stdin) != NULL){
@@ -280,7 +289,7 @@ int main(int argc, char *argv[]) {
 
         }
 
-        if (fds[1].revents && POLLIN) {
+        if (fds[1].revents & POLLIN) {
 
             bzero(buffer,256);
             n = readLine(sockfd, buffer, 255);
@@ -326,6 +335,9 @@ int main(int argc, char *argv[]) {
             else if(data_type == '2'){
                 sent_queue.arr[atoi(sq) - 1]->received = 1;
             }
+            else if(data_type == '4'){
+                resend(sent_queue, sockfd);
+            }
 
              if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
                 print(&recv_queue);
@@ -336,7 +348,7 @@ int main(int argc, char *argv[]) {
 
     close(sockfd);
     for(int i = 0; i < sent_queue.size; i ++){
-        printf("%d\t%lld\t%s", sent_queue.arr[i]->received, sent_queue.arr[i]->timestamp, sent_queue.arr[i]->msg );
+        //printf("%d\t%s", sent_queue.arr[i]->received, sent_queue.arr[i]->msg );
         free(sent_queue.arr[i]);
     }
     return 0;
