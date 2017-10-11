@@ -15,6 +15,27 @@ void error(const char *msg) {
     exit(0);
 }
 
+uint16_t fletcher16( uint8_t const *data, size_t bytes )
+{
+        uint16_t sum1 = 0xff, sum2 = 0xff;
+        size_t tlen;
+
+        while (bytes) {
+                tlen = ((bytes >= 20) ? 20 : bytes);
+                bytes -= tlen;
+                do {
+                        sum2 += sum1 += *data++;
+                        tlen--;
+                } while (tlen);
+                sum1 = (sum1 & 0xff) + (sum1 >> 8);
+                sum2 = (sum2 & 0xff) + (sum2 >> 8);
+        }
+        /* Second reduction step to reduce sums to 8 bits */
+        sum1 = (sum1 & 0xff) + (sum1 >> 8);
+        sum2 = (sum2 & 0xff) + (sum2 >> 8);
+        return (sum2 << 8) | sum1;
+}
+
 long long now64(){
   struct timeval now;
   bzero(&now, sizeof(struct timeval));
@@ -58,8 +79,13 @@ void send_message(struct package_sent *item, int sockfd){
     sprintf(seq_str, "%d", (item->type + item->sq));
     strcat(seq_str, buffer);
     strcpy(buffer, seq_str);
+    uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer));
+    char check_digit[5];
+    sprintf(check_digit, "%04x", d);
+    char message[256];
+    sprintf(message, "%s%s", check_digit, buffer);
 
-    int n = write(sockfd,buffer,strlen(buffer));
+    int n = write(sockfd,message,strlen(message));
     if (n < 0) {
         error("ERROR writing to socket");
     }
@@ -290,7 +316,18 @@ int main(int argc, char *argv[]) {
         if (fds[1].revents & POLLIN) {
 
             bzero(buffer,256);
-            n = readLine(sockfd, buffer, 255);
+            char raw_data[256];
+            char check_digit[5];
+            n = readLine(sockfd, raw_data, 255);
+            memcpy(check_digit, raw_data, 4);
+            check_digit[4] = '\0';
+            strcpy(buffer, raw_data + 4);
+            uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer));
+
+            if(d != (uint16_t) strtol(check_digit, NULL, 16)){
+                continue;
+            }
+
 
 
             //提取这个buffer中的sequence number，在标识符":"之前的string，就是sequence number.
@@ -325,7 +362,15 @@ int main(int argc, char *argv[]) {
                 enqueue(&recv_queue, p);
                 char response[16];
                 sprintf(response, "%dACK\n", type_ack + p->sq);
-                write(sockfd, response, strlen(response));
+
+                uint16_t d = fletcher16((uint8_t const *)response, strlen(response));
+                char check_digit[5];
+                sprintf(check_digit, "%04x", d);
+                char message[256];
+                sprintf(message, "%s%s", check_digit, response);
+
+
+                write(sockfd, message, strlen(message));
                 //print(&recv_queue);
                 //printf("%c\n", recv_queue.tail->type);
                 //printf("%d\n", recv_queue.size);
