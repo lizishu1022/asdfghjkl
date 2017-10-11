@@ -12,8 +12,7 @@ void error(const char *msg) {
     exit(0);
 }
 
-uint16_t fletcher16( uint8_t const *data, size_t bytes )
-{
+uint16_t fletcher16( uint8_t const *data, size_t bytes) { //校验位，16位，2个字节，维基百科上抄的
     uint16_t sum1 = 0xff, sum2 = 0xff;
     size_t tlen;
 
@@ -33,7 +32,7 @@ uint16_t fletcher16( uint8_t const *data, size_t bytes )
     return (sum2 << 8) | sum1;
 }
 
-struct package_recv{
+struct package_recv{ //接受队列item
     char type;
     int sq;
     char msg[256];
@@ -41,14 +40,14 @@ struct package_recv{
     struct package_recv *next;
 };
 
-struct package_recv_queue{
+struct package_recv_queue{  //接受队列
     struct package_recv *head;
     struct package_recv *tail;
     int size;
     unsigned long sum_sq;
 };
 
-struct package_sent{
+struct package_sent{ ////接受队列item
     int type;
     int sq;
     char msg[256];
@@ -56,7 +55,7 @@ struct package_sent{
     int received;
 };
 
-struct package_sent_queue{
+struct package_sent_queue{  //发送队列
     struct package_sent *arr[90000];
     int size;
 };
@@ -88,32 +87,30 @@ void resend(struct package_sent_queue queue, int sockfd){
     }
 }
 
-void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){
+void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){ //添加到发送队列
     queue->arr[item->sq - 1] = item;
     queue->size ++;
 }
 
-void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
-    if(queue->size == 0){
+void enqueue(struct package_recv_queue *queue, struct package_recv *item) { //添加到接受队列
+    if(queue->size == 0){ //当队列为空时，添加后，头和尾都是当前item
         queue->head = item;
         queue->tail = item;
     }
     else{
-        if(queue->tail->type == '9' && item->type == '9')
-        return;
-        struct package_recv *p = queue->tail;
+        struct package_recv *p = queue->tail; //从队列尾开始找
         while(p != NULL){
-            if(item->sq == p->sq){
+            if(item->sq == p->sq){             //序列号相同时退出
                 return;
             }
             else if(item->sq > p->sq){
-                if(p == queue->tail){
+                if(p == queue->tail){           //插入队列tail后面的情况
                     item->prev = p;
                     queue->tail->next = item;
                     queue->tail = item;
                 }
                 else{
-                    item->prev = p;
+                    item->prev = p;             //插入队列中间的情况
                     item->next = p->next;
                     p->next->prev = item;
                     p->next = item;
@@ -123,7 +120,7 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
             p = p->prev;
         }
         if(p == NULL){
-            queue->head->prev = item;
+            queue->head->prev = item;           //插入队列head 之前的情况
             item->next = queue->head;
             queue->head = item;
         }
@@ -149,8 +146,7 @@ void print(struct package_recv_queue *queue) {
     }
 }
 
-ssize_t readLine(int fd, void *buffer, size_t n)
-{
+ssize_t readLine(int fd, void *buffer, size_t n) { //从socket读入一行，网上抄的
     ssize_t numRead;                    /* # of bytes fetched by last read() */
     size_t totRead;                     /* Total bytes read so far */
     char *buf;
