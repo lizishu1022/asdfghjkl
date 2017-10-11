@@ -17,46 +17,38 @@ void error(const char *msg) {
 
 uint16_t fletcher16( uint8_t const *data, size_t bytes )
 {
-        uint16_t sum1 = 0xff, sum2 = 0xff;
-        size_t tlen;
+    uint16_t sum1 = 0xff, sum2 = 0xff;
+    size_t tlen;
 
-        while (bytes) {
-                tlen = ((bytes >= 20) ? 20 : bytes);
-                bytes -= tlen;
-                do {
-                        sum2 += sum1 += *data++;
-                        tlen--;
-                } while (tlen);
-                sum1 = (sum1 & 0xff) + (sum1 >> 8);
-                sum2 = (sum2 & 0xff) + (sum2 >> 8);
-        }
-        /* Second reduction step to reduce sums to 8 bits */
+    while (bytes) {
+        tlen = ((bytes >= 20) ? 20 : bytes);
+        bytes -= tlen;
+        do {
+            sum2 += sum1 += *data++;
+            tlen--;
+        } while (tlen);
         sum1 = (sum1 & 0xff) + (sum1 >> 8);
         sum2 = (sum2 & 0xff) + (sum2 >> 8);
-        return (sum2 << 8) | sum1;
+    }
+    /* Second reduction step to reduce sums to 8 bits */
+    sum1 = (sum1 & 0xff) + (sum1 >> 8);
+    sum2 = (sum2 & 0xff) + (sum2 >> 8);
+    return (sum2 << 8) | sum1;
 }
-
-long long now64(){
-  struct timeval now;
-  bzero(&now, sizeof(struct timeval));
-  if (gettimeofday(&now,0)) error("ERROR: gettimeofday() failed\n");
-  return  (long long)(now.tv_sec)*1000000 + now.tv_usec;
-}
-
 
 struct package_recv{
-  char type;
-  int sq;
-  char msg[256];
-  struct package_recv *prev;
-  struct package_recv *next;
+    char type;
+    int sq;
+    char msg[256];
+    struct package_recv *prev;
+    struct package_recv *next;
 };
 
 struct package_recv_queue{
-  struct package_recv *head;
-  struct package_recv *tail;
-  int size;
-  unsigned long sum_sq;
+    struct package_recv *head;
+    struct package_recv *tail;
+    int size;
+    unsigned long sum_sq;
 };
 
 struct package_sent{
@@ -111,10 +103,9 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
     }
     else{
         if(queue->tail->type == '9' && item->type == '9')
-            return;
+        return;
         struct package_recv *p = queue->tail;
         while(p != NULL){
-            //printf("comparing item.sq: %d, p.sq %d\n",item->sq , p->sq );
             if(item->sq == p->sq){
                 return;
             }
@@ -143,7 +134,7 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) {
     if(item->type == '1'){
         queue->sum_sq += item->sq;
         queue->size ++;
-      }
+    }
 }
 
 void print(struct package_recv_queue *queue) {
@@ -181,24 +172,24 @@ ssize_t readLine(int fd, void *buffer, size_t n)
 
         if (numRead == -1) {
             if (errno == EINTR)         /* Interrupted --> restart read() */
-                continue;
+            continue;
             else
-                return -1;              /* Some other error */
-
-        } else if (numRead == 0) {      /* EOF */
+            return -1;              /* Some other error */
+        }
+        else if (numRead == 0) {      /* EOF */
             if (totRead == 0)           /* No bytes read; return 0 */
-                return 0;
+            return 0;
             else                        /* Some bytes read; add '\0' */
-                break;
+            break;
 
-        } else {                        /* 'numRead' must be 1 if we get here */
+        }else {                        /* 'numRead' must be 1 if we get here */
             if (totRead < n - 1) {      /* Discard > (n - 1) bytes */
                 totRead++;
                 *buf++ = ch;
             }
 
             if (ch == '\n')
-                break;
+            break;
         }
     }
 
@@ -224,12 +215,11 @@ int main(int argc, char *argv[]) {
     int type_eof      = 9000000;
 
     int flag_all_sent = 0;
-
     int seq_num = 1;
 
     if (argc < 3) {
-       fprintf(stderr,"usage %s hostname port\n", argv[0]);
-       exit(0);
+        fprintf(stderr,"usage %s hostname port\n", argv[0]);
+        exit(0);
     }
 
     portno = atoi(argv[2]);
@@ -249,8 +239,8 @@ int main(int argc, char *argv[]) {
     bzero((char *) &serv_addr, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)server->h_addr,
-         (char *)&serv_addr.sin_addr.s_addr,
-         server->h_length);
+    (char *)&serv_addr.sin_addr.s_addr,
+    server->h_length);
     serv_addr.sin_port = htons(portno);
 
     if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
@@ -275,14 +265,12 @@ int main(int argc, char *argv[]) {
 
         int r = poll(fds, 2, 2000);
 
-        if(r == 0 && recv_queue.size != 0){
+        if(r == 0 && recv_queue.size != 0){ //send timeout signal
             struct package_sent item;
             item.type = type_timeout;
             strcpy(item.msg, "TIMEOUT\n");
-
             send_message(&item, sockfd);
         }
-
 
         if ((fds[0].revents & POLLIN) && !flag_all_sent) {
 
@@ -328,21 +316,12 @@ int main(int argc, char *argv[]) {
                 continue;
             }
 
-
-
-            //提取这个buffer中的sequence number，在标识符":"之前的string，就是sequence number.
-            //提取之后，sequence number 是一个char[]，把它转换为int.
-            //定义两个新的buffer，bufferA - 这里放的是in order的； bufferB - 这里放的是非order的.
-            //第一个sequence number 应该是1，如果是，把sequence number 和标识符":"都remove掉，然后放入bufferA.如果不是，放入bufferB。
-            //然后陆续传入sequence number，根据bufferA里已经存放的那些number来判断应该放入bufferA还是bufferB。 假如传入的这个number是8，那就要去对比bufferA里是否1-7都有了。 （这一步骤应该想想有没有更高效的方法，本质上这应该是个排序算法。）
-
-
             if (n < 0) {
                 error("ERROR reading from socket");
-            }
-            if (n == 0) {
+            }else if (n == 0){
                 break;
             }
+
             char data_type = buffer[0];
             char sq[7];
             memcpy(sq, buffer + 1, 6);
@@ -354,26 +333,17 @@ int main(int argc, char *argv[]) {
                 p->sq = atoi(sq);
                 p->prev = NULL;
                 p->next = NULL;
-
-                //printf("%s", buffer);
-
                 strcpy(p->msg, buffer + 7);
-
                 enqueue(&recv_queue, p);
+
                 char response[16];
                 sprintf(response, "%dACK\n", type_ack + p->sq);
-
                 uint16_t d = fletcher16((uint8_t const *)response, strlen(response));
                 char check_digit[5];
                 sprintf(check_digit, "%04x", d);
                 char message[256];
                 sprintf(message, "%s%s", check_digit, response);
-
-
                 write(sockfd, message, strlen(message));
-                //print(&recv_queue);
-                //printf("%c\n", recv_queue.tail->type);
-                //printf("%d\n", recv_queue.size);
             }
             else if(data_type == '2'){
                 sent_queue.arr[atoi(sq) - 1]->received = 1;
@@ -382,7 +352,7 @@ int main(int argc, char *argv[]) {
                 resend(sent_queue, sockfd);
             }
 
-             if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
+            if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
                 print(&recv_queue);
                 break;
             }
@@ -391,7 +361,6 @@ int main(int argc, char *argv[]) {
 
     close(sockfd);
     for(int i = 0; i < sent_queue.size; i ++){
-        //printf("%d\t%s", sent_queue.arr[i]->received, sent_queue.arr[i]->msg );
         free(sent_queue.arr[i]);
     }
     return 0;
