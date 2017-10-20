@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <netdb.h>
 #include <poll.h>
 #include <errno.h>
@@ -72,6 +71,8 @@ void send_message(struct package_sent *item, int sockfd){
     sprintf(check_digit, "%04x", d);
     char message[256];
     sprintf(message, "%s%s", check_digit, buffer);
+
+    fprintf(stderr, "sending(%d)\t%s",d, message);
 
     int n = write(sockfd,message,strlen(message));
     if (n < 0) {
@@ -304,8 +305,10 @@ int main(int argc, char *argv[]) {
             check_digit[4] = '\0';
             strcpy(buffer, raw_data + 4);
             uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer));
+            fprintf(stderr, "received(%d)\t%s", d, raw_data);
 
             if(d != (uint16_t) strtol(check_digit, NULL, 16)){
+                fprintf(stderr, "not a valid message, skipping\n");
                 continue;
             }
 
@@ -328,6 +331,7 @@ int main(int argc, char *argv[]) {
                 p->next = NULL;
                 strcpy(p->msg, buffer + 7);
                 enqueue(&recv_queue, p);
+                fprintf(stderr, "received %d valid messages\n", recv_queue.size);
 
                 char response[16];
                 sprintf(response, "%dACK\n", type_ack + p->sq);
@@ -342,6 +346,7 @@ int main(int argc, char *argv[]) {
                 sent_queue.arr[atoi(sq) - 1]->received = 1;
             }
             else if(data_type == '4'){
+                fprintf(stderr, "resending triggered.\n");
                 resend(sent_queue, sockfd);
             }
 
