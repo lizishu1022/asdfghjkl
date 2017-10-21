@@ -262,6 +262,7 @@ int main(int argc, char *argv[]) {
         if(r == 0 && recv_queue.size != 0){ //send timeout signal
             struct package_sent item;
             item.type = type_timeout;
+	        item.sq = 0;
             strcpy(item.msg, "TIMEOUT\n");
             send_message(&item, sockfd);
         }
@@ -307,15 +308,17 @@ int main(int argc, char *argv[]) {
             uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer));
             fprintf(stderr, "received(%d)\t%s", d, raw_data);
 
-            if(d != (uint16_t) strtol(check_digit, NULL, 16)){
+	    if (n < 0) {
+            error("ERROR reading from socket");
+        }else if (n == 0){
+            break;}            
+
+
+fprintf(stderr, "reading from socket, n = %d\n", n);
+
+	if(d != (uint16_t) strtol(check_digit, NULL, 16)){
                 fprintf(stderr, "not a valid message, skipping\n");
                 continue;
-            }
-
-            if (n < 0) {
-                error("ERROR reading from socket");
-            }else if (n == 0){
-                break;
             }
 
             char data_type = buffer[0];
@@ -324,7 +327,7 @@ int main(int argc, char *argv[]) {
             sq[6] = '\0';
 
             if(data_type == '1' || data_type == '9'){
-                struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));;
+                struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));
                 p->type = buffer[0];
                 p->sq = atoi(sq);
                 p->prev = NULL;
