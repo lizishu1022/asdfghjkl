@@ -6,6 +6,8 @@
 #include <poll.h>
 #include <errno.h>
 
+int flag_resend_in_progress = 0;
+
 void error(const char *msg) {
     perror(msg);
     exit(0);
@@ -81,11 +83,13 @@ void send_message(struct package_sent *item, int sockfd){
 }
 
 void resend(struct package_sent_queue queue, int sockfd){
+    flag_resend_in_progress = 1;
     for(int i = 0; i < queue.size; i ++){
         if(queue.arr[i]->received != 1){
             send_message(queue.arr[i], sockfd);
         }
     }
+    flag_resend_in_progress = 0;
 }
 
 void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){ //添加到发送队列
@@ -257,7 +261,7 @@ int main(int argc, char *argv[]) {
 
     while(1) {
 
-        int r = poll(fds, 2, 2000);
+        int r = poll(fds, 2, 1000);
 
         if(r == 0 && recv_queue.size != 0){ //send timeout signal
             struct package_sent item;
@@ -311,7 +315,7 @@ int main(int argc, char *argv[]) {
 	    if (n < 0) {
             error("ERROR reading from socket");
         }else if (n == 0){
-            break;}            
+            break;}
 
 
 fprintf(stderr, "reading from socket, n = %d\n", n);
@@ -349,8 +353,10 @@ fprintf(stderr, "reading from socket, n = %d\n", n);
                 sent_queue.arr[atoi(sq) - 1]->received = 1;
             }
             else if(data_type == '4'){
-                fprintf(stderr, "resending triggered.\n");
-                resend(sent_queue, sockfd);
+                if(flag_all_sent && !flag_resend_in_progress){
+                    fprintf(stderr, "resending triggered.\n");
+                    resend(sent_queue, sockfd);
+                }
             }
 
             if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
