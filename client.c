@@ -13,7 +13,8 @@ void error(const char *msg) {
     exit(0);
 }
 
-uint16_t fletcher16( uint8_t const *data, size_t bytes) { //校验位，16位，2个字节，维基百科上抄的
+//Checksum. Got from Wikipedia. pass in message and it's size, returun a unit16_t type of int. 16 bits, 2 bytes
+uint16_t fletcher16( uint8_t const *data, size_t bytes) {
     uint16_t sum1 = 0xff, sum2 = 0xff;
     size_t tlen;
 
@@ -33,7 +34,7 @@ uint16_t fletcher16( uint8_t const *data, size_t bytes) { //校验位，16位，
     return (sum2 << 8) | sum1;
 }
 
-struct package_recv{ //接受队列item
+struct package_recv{ //A struct in the queue, includes type, sequence number, message, and to pointers.
     char type;
     int sq;
     char msg[256];
@@ -41,22 +42,21 @@ struct package_recv{ //接受队列item
     struct package_recv *next;
 };
 
-struct package_recv_queue{  //接受队列
+struct package_recv_queue{  //Queue has head, tail, size, and sum of sequence number.
     struct package_recv *head;
     struct package_recv *tail;
     int size;
     unsigned long sum_sq;
 };
 
-struct package_sent{ ////接受队列item
+struct package_sent{ // A struct used for sending message: type, sequence number, message itself and a received label (boolean).
     int type;
     int sq;
     char msg[256];
-    long long timestamp;
     int received;
 };
 
-struct package_sent_queue{  //发送队列
+struct package_sent_queue{  //The queue needs to be sent.
     struct package_sent *arr[90000];
     int size;
 };
@@ -68,9 +68,9 @@ void send_message(struct package_sent *item, int sockfd){
     sprintf(seq_str, "%d", (item->type + item->sq));
     strcat(seq_str, buffer);
     strcpy(buffer, seq_str);
-    uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer));
+    uint16_t d = fletcher16((uint8_t const *)buffer, strlen(buffer)); // add checksum
     char check_digit[5];
-    sprintf(check_digit, "%04x", d);
+    sprintf(check_digit, "%04x", d); // add 0 to make up -> 4 digits
     char message[256];
     sprintf(message, "%s%s", check_digit, buffer);
 
@@ -82,7 +82,7 @@ void send_message(struct package_sent *item, int sockfd){
     }
 }
 
-void resend(struct package_sent_queue queue, int sockfd){
+void resend(struct package_sent_queue queue, int sockfd){ // Resend
     flag_resend_in_progress = 1;
     for(int i = 0; i < queue.size; i ++){
         if(queue.arr[i]->received != 1){
@@ -92,30 +92,30 @@ void resend(struct package_sent_queue queue, int sockfd){
     flag_resend_in_progress = 0;
 }
 
-void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){ //添加到发送队列
+void enqueue_sent(struct package_sent_queue *queue, struct package_sent *item){ //Reserve the buffer into the send queue
     queue->arr[item->sq - 1] = item;
     queue->size ++;
 }
 
-void enqueue(struct package_recv_queue *queue, struct package_recv *item) { //添加到接受队列
-    if(queue->size == 0){ //当队列为空时，添加后，头和尾都是当前item
+void enqueue(struct package_recv_queue *queue, struct package_recv *item) { // To support reorder
+    if(queue->size == 0){ //Insert first element to the quque
         queue->head = item;
         queue->tail = item;
     }
     else{
-        struct package_recv *p = queue->tail; //从队列尾开始找
+        struct package_recv *p = queue->tail; //Start from the tail fo the queue
         while(p != NULL){
-            if(item->sq == p->sq){             //序列号相同时退出
+            if(item->sq == p->sq){             //Return when sequence is already existed.
                 return;
             }
             else if(item->sq > p->sq){
-                if(p == queue->tail){           //插入队列tail后面的情况
+                if(p == queue->tail){           //Insert into the tail of the queue.
                     item->prev = p;
                     queue->tail->next = item;
                     queue->tail = item;
                 }
                 else{
-                    item->prev = p;             //插入队列中间的情况
+                    item->prev = p;             //Insert into the middle of the queue
                     item->next = p->next;
                     p->next->prev = item;
                     p->next = item;
@@ -125,7 +125,7 @@ void enqueue(struct package_recv_queue *queue, struct package_recv *item) { //�
             p = p->prev;
         }
         if(p == NULL){
-            queue->head->prev = item;           //插入队列head 之前的情况
+            queue->head->prev = item;           //Insert before the head of the queue
             item->next = queue->head;
             queue->head = item;
         }
@@ -151,7 +151,10 @@ void print(struct package_recv_queue *queue) {
     }
 }
 
-ssize_t readLine(int fd, void *buffer, size_t n) { //从socket读入一行，网上抄的
+// This piece of method got from internet.
+// If use the original "read(sockfd, raw_data, 255)" method, some message's type, sequence number cannot be removed.
+ssize_t readLine(int fd, void *buffer, size_t n) {
+
     ssize_t numRead;                    /* # of bytes fetched by last read() */
     size_t totRead;                     /* Total bytes read so far */
     char *buf;
@@ -201,14 +204,14 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
-    struct pollfd fds[2];  // {fd, events, revents}
+    struct pollfd fds[2]; 
 
     char buffer[256];
     int sequenceNumber = 0;
 
+    // Four types: normal message, ack, timeout, end of file.
     int type_message  = 1000000;
     int type_ack      = 2000000;
-    int type_nck      = 3000000;
     int type_timeout  = 4000000;
     int type_eof      = 9000000;
 
@@ -247,7 +250,7 @@ int main(int argc, char *argv[]) {
 
     fds[0].fd = 0;
     fds[1].fd = sockfd;
-    fds[0].events = POLLIN; //pollin because reading
+    fds[0].events = POLLIN; 
     fds[1].events = POLLIN;
 
     struct package_recv_queue recv_queue;
@@ -263,7 +266,7 @@ int main(int argc, char *argv[]) {
 
         int r = poll(fds, 2, 1000);
 
-        if(r == 0 && recv_queue.size != 0){ //send timeout signal
+        if(r == 0 && recv_queue.size != 0){ //Send timeout signal
             struct package_sent item;
             item.type = type_timeout;
 	        item.sq = 0;
@@ -271,11 +274,13 @@ int main(int argc, char *argv[]) {
             send_message(&item, sockfd);
         }
 
+        // Send message
         if ((fds[0].revents & POLLIN) && !flag_all_sent) {
 
             bzero(buffer,256);
+            // Still in sending normal message.
             if(fgets(buffer,255,stdin) != NULL){
-                struct package_sent *item = (struct package_sent *)malloc(sizeof(struct package_sent));
+                struct package_sent *item = (struct package_sent *)malloc(sizeof(struct package_sent)); // Dynamic memory allocation
                 item->type = type_message;
                 item->sq = seq_num;
                 item->received = 0;
@@ -286,6 +291,7 @@ int main(int argc, char *argv[]) {
                 seq_num ++;
             }
             else{
+                // After sent all the normal message, send "EOF"
                 struct package_sent *item = (struct package_sent *)malloc(sizeof(struct package_sent));
                 item->type = type_eof;
                 item->sq = seq_num;
@@ -300,6 +306,7 @@ int main(int argc, char *argv[]) {
 
         }
 
+        //Receive message.
         if (fds[1].revents & POLLIN) {
 
             bzero(buffer,256);
@@ -315,11 +322,13 @@ int main(int argc, char *argv[]) {
 	    if (n < 0) {
             error("ERROR reading from socket");
         }else if (n == 0){
-            break;}
+            break;
+        }
 
+    fprintf(stderr, "reading from socket, n = %d\n", n);
 
-fprintf(stderr, "reading from socket, n = %d\n", n);
-
+    // If sent message checksum is not equals to the sent message, means the message is corrupted.
+    // Out of the while loop.
 	if(d != (uint16_t) strtol(check_digit, NULL, 16)){
                 fprintf(stderr, "not a valid message, skipping\n");
                 continue;
@@ -330,6 +339,7 @@ fprintf(stderr, "reading from socket, n = %d\n", n);
             memcpy(sq, buffer + 1, 6);
             sq[6] = '\0';
 
+            // normal message.
             if(data_type == '1' || data_type == '9'){
                 struct package_recv *p = (struct package_recv *)malloc(sizeof(struct package_recv));
                 p->type = buffer[0];
@@ -340,6 +350,7 @@ fprintf(stderr, "reading from socket, n = %d\n", n);
                 enqueue(&recv_queue, p);
                 fprintf(stderr, "received %d valid messages\n", recv_queue.size);
 
+                //Send ack
                 char response[16];
                 sprintf(response, "%dACK\n", type_ack + p->sq);
                 uint16_t d = fletcher16((uint8_t const *)response, strlen(response));
@@ -349,16 +360,17 @@ fprintf(stderr, "reading from socket, n = %d\n", n);
                 sprintf(message, "%s%s", check_digit, response);
                 write(sockfd, message, strlen(message));
             }
-            else if(data_type == '2'){
+            else if(data_type == '2'){ // if reviceived, ack message. label the received to true. 
                 sent_queue.arr[atoi(sq) - 1]->received = 1;
             }
-            else if(data_type == '4'){
+            else if(data_type == '4'){ // Timeout, resend the send_queue
                 if(flag_all_sent && !flag_resend_in_progress){
                     fprintf(stderr, "resending triggered.\n");
                     resend(sent_queue, sockfd);
                 }
             }
 
+            //1+2+3+4+.....+n = n(n-1)/2: all the message are received without duplication. 
             if(recv_queue.size !=0 && recv_queue.tail->type == '9' && recv_queue.sum_sq == (long)recv_queue.tail->sq * (recv_queue.tail->sq - 1) / 2 ){
                 print(&recv_queue);
                 break;
